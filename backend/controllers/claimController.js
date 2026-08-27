@@ -1,71 +1,42 @@
-const asyncHandler = require('../middleware/asynchandler');
-const Claim = require('../models/Claim');
-const Benefit = require('../models/Benefit');
+import asyncHandler from '../middleware/asyncHandler.js'
+import Claim from '../models/Claim.js'
+import Benefit from '../models/Benefit.js'
 
 // @desc    Claim a benefit
 // @route   POST /api/claims/:benefitId
 // @access  Private
-const claimBenefit = asyncHandler(async (req, res) => {
-  const { benefitId } = req.params;
+export const claimBenefit = asyncHandler(async (req, res) => {
 
-  const benefit = await Benefit.findById(benefitId);
+  const userId = req.user.id
+  const { benefitId } = req.params
+
+  const benefit = await Benefit.findById(benefitId)
+
   if (!benefit) {
-    res.status(404);
-    throw new Error('Benefit not found');
+    const error = new Error('Benefit not found')
+    error.statusCode = 404
+    throw error
   }
 
-  const alreadyClaimed = await Claim.findOne({
-    userId: req.user._id,
-    benefitId,
-  });
+  const existingClaim = await Claim.findOne({ user: userId, benefit: benefitId })
 
-  if (alreadyClaimed) {
-    res.status(400);
-    throw new Error('You have already claimed this benefit');
+  if (existingClaim) {
+    const error = new Error('Benefit already claimed')
+    error.statusCode = 400
+    throw error
   }
 
-  const claim = await Claim.create({
-    userId: req.user._id,
-    benefitId,
-  });
+  const claim = await Claim.create({ user: userId, benefit: benefitId })
 
-  const populatedClaim = await claim.populate('benefitId');
+  res.status(201).json({ success: true, message: 'Benefit claimed successfully', claim })
+})
 
-  res.status(201).json({ success: true, claim: populatedClaim });
-});
-
-// @desc    Get logged-in user's claims
+// @desc    Get logged in user's claimed benefits
 // @route   GET /api/claims
 // @access  Private
-const getMyClaims = asyncHandler(async (req, res) => {
-  const claims = await Claim.find({ userId: req.user._id })
-    .populate('benefitId')
-    .sort({ createdAt: -1 });
+export const getMyClaims = asyncHandler(async (req, res) => {
 
-  res.status(200).json({ success: true, claims });
-});
-
-// @desc    Remove a claim
-// @route   DELETE /api/claims/:claimId
-// @access  Private
-const removeClaim = asyncHandler(async (req, res) => {
-  const { claimId } = req.params;
-
-  const claim = await Claim.findById(claimId);
-
-  if (!claim) {
-    res.status(404);
-    throw new Error('Claim not found');
-  }
-
-  if (claim.userId.toString() !== req.user._id.toString()) {
-    res.status(401);
-    throw new Error('Not authorized to remove this claim');
-  }
-
-  await claim.deleteOne();
-
-  res.status(200).json({ success: true, message: 'Claim removed' });
-});
-
-module.exports = { claimBenefit, getMyClaims, removeClaim };
+  const userId = req.user.id
+  const claims = await Claim.find({ user: userId }).populate('benefit')
+  res.status(200).json({ success: true, claims })
+})
